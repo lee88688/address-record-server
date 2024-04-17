@@ -1,18 +1,53 @@
 #!/bin/sh
 
-# 获取脚本的第四、第五个参数
-param4="$4"
-param5="$5"
+# env
+# TOKEN for bearer token
+# URL for request url
+# RETRY_INTERVAL for request fail retry interval
+# MAX_RETRIES for maximum reqeust retries
 
-# 将第四、第五个参数使用英文冒号拼接
-content="${param4}:${param5}"
+# Check if at least five arguments are provided
+if [ "$#" -lt 5 ]; then
+    echo "This script requires at least five arguments."
+    exit 1
+fi
 
-# 使用环境变量获取Bearer Token和URL
-bearerToken="$TOKEN"
-url="$URL"
+# Concatenate the fourth and fifth arguments with a colon
+address="$4:$5"
 
-# 使用curl发起POST请求
-curl -X POST $url \
--H "Content-Type: application/json" \
--H "Authorization: Bearer $bearerToken" \
--d "{\"value\": \"$content\"}"
+# Initialize retry count
+retry_count=0
+
+# Function to send POST request
+send_request() {
+    response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$URL" \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"value\": \"$address\"}")
+
+    echo $response
+}
+
+# Send request and handle retries if necessary
+while true; do
+    # Send the request
+    status_code=$(send_request)
+
+    # Check if status code is not a 2xx success code
+    if echo "$status_code" | grep -q "^2"; then
+        echo "Request succeeded with status code $status_code"
+        break
+    else
+        echo "Request failed with status code $status_code"
+        retry_count=$((retry_count + 1))
+
+        # Check if maximum retries reached
+        if [ "$retry_count" -lt "$MAX_RETRIES" ]; then
+            echo "Waiting $RETRY_INTERVAL seconds before retrying..."
+            sleep "$RETRY_INTERVAL"
+        else
+            echo "Maximum retries reached ($MAX_RETRIES), exiting."
+            exit 1
+        fi
+    fi
+done
